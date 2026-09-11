@@ -230,6 +230,21 @@ test('mixed leading and trailing labels in the same string', function () {
     { mode: 'labeled', w: 100, d: 40, h: 15, unit: 'cm', lengthUsedAs: null });
 });
 
+test('real reported bug: repeated trailing adjective clauses, no separators or units', function () {
+  // Each label word sits directly between two numbers — the one that's
+  // actually its value, and the next clause's number right after it. Used
+  // to grab the wrong neighbor (e.g. "deep" bound to the "45" that belongs
+  // to "wide"), producing duplicate/mislabeled values instead of a parse
+  // failure — a silently wrong answer while the user was still typing.
+  assertParsed('17 high 19 deep 45 wide',
+    { mode: 'labeled', w: 45, d: 19, h: 17, unit: null, lengthUsedAs: null });
+});
+
+test('repeated leading clauses, no colons or separators (the mirror-image case)', function () {
+  assertParsed('Width 100 cm Depth 40 cm Height 15 cm',
+    { mode: 'labeled', w: 100, d: 40, h: 15, unit: 'cm', lengthUsedAs: null });
+});
+
 // ---------------------------------------------------------------------
 // 5. "Length" used as a stand-in for Width or Depth
 // ---------------------------------------------------------------------

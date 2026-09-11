@@ -92,8 +92,12 @@
   }
 
   // "100cm W" / "30.8\" W" — the label trails the number, as on many spec sheets.
+  // The gaps use [^\S\r\n]* (whitespace but NOT a newline) rather than \s* so
+  // this never reaches across a line break to grab a number that belongs to
+  // a different stacked line (e.g. "Width: 100 cm\nDepth: 40 cm" must not
+  // let "100 cm" trail-match "Depth" on the next line).
   function findTrailingLabelValue(str, labelAlt) {
-    var re = new RegExp('(\\d+(?:\\.\\d+)?)\\s*' + UNIT_TOKEN + '?\\s*\\b(?:' + labelAlt + ')\\b', 'i');
+    var re = new RegExp('(\\d+(?:\\.\\d+)?)[^\\S\\r\\n]*' + UNIT_TOKEN + '?[^\\S\\r\\n]*\\b(?:' + labelAlt + ')\\b', 'i');
     var m = re.exec(str);
     if (!m) return null;
     return { value: parseFloat(m[1]), unit: m[2] ? normalizeUnit(m[2]) : null };
@@ -107,18 +111,41 @@
     return { value: parseFloat(m[1]), unit: m[2] ? normalizeUnit(m[2]) : null };
   }
 
-  function findLabelValue(str, labelAlt) {
+  // In a run of same-style clauses ("17 high 19 deep 45 wide", or equally
+  // "Width 100 cm Depth 40 cm Height 15 cm" with no colons), each label word
+  // sits directly between two numbers — one that's actually its own value,
+  // and one that belongs to the neighboring clause. Trying "leading" and
+  // "trailing" in a fixed order picks the wrong neighbor for whichever style
+  // wasn't tried first. Instead, sniff which style the string is using
+  // overall (does a digit or a label word come first?) and try that
+  // direction first for every label — the other direction stays as a
+  // fallback for genuinely mixed pastes like "Width: 100cm, 15cm H, Depth: 40cm".
+  var ANY_LABEL_WORD_RE = /\b(?:width|wide|depth|deep|height|high|tall|length|long|w|d|h|l)\b/i;
+
+  function preferTrailingStyle(str) {
+    var numMatch = /\d/.exec(str);
+    var labelMatch = ANY_LABEL_WORD_RE.exec(str);
+    if (!numMatch || !labelMatch) return false;
+    return numMatch.index < labelMatch.index;
+  }
+
+  function findLabelValue(str, labelAlt, preferTrailing) {
+    if (preferTrailing) {
+      return findTrailingLabelValue(str, labelAlt) || findLeadingLabelValue(str, labelAlt);
+    }
     return findLeadingLabelValue(str, labelAlt) || findTrailingLabelValue(str, labelAlt);
   }
 
   function tryLabeledParse(str) {
+    var preferTrailing = preferTrailingStyle(str);
+
     // Natural prose favors adjectives ("40cm deep", "51cm wide") over the
     // noun/abbreviation forms — real listings say "wide"/"deep"/"high"/
     // "tall"/"long" at least as often as "width"/"depth"/"height"/"length".
-    var wM = findLabelValue(str, 'width|wide|w');
-    var dM = findLabelValue(str, 'depth|deep|d');
-    var hM = findLabelValue(str, 'height|high|tall|h');
-    var lM = findLabelValue(str, 'length|long|l');
+    var wM = findLabelValue(str, 'width|wide|w', preferTrailing);
+    var dM = findLabelValue(str, 'depth|deep|d', preferTrailing);
+    var hM = findLabelValue(str, 'height|high|tall|h', preferTrailing);
+    var lM = findLabelValue(str, 'length|long|l', preferTrailing);
 
     var lengthUsedAs = null;
     if (!wM && lM) { wM = lM; lengthUsedAs = 'width'; }
