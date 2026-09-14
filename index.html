@@ -601,6 +601,32 @@
 
   function setText(id, text){ document.getElementById(id).textContent = text; }
 
+  // Private usage log: fires a GA4 custom event with the input text and the
+  // exact result shown, so it shows up in Analytics (visible only to the
+  // GA account owner) alongside the built-in Country/City reports. Debounced
+  // so it only fires once ~1.2s after the visitor stops typing/pasting —
+  // not on every keystroke of a partial, still-changing input.
+  var trackTimer = null;
+  var lastTracked = null;
+  function scheduleTrack(raw, mode, sourceUnit, shownUnit, wOut, dOut, hOut) {
+    clearTimeout(trackTimer);
+    trackTimer = setTimeout(function () {
+      if (raw === lastTracked) return;
+      lastTracked = raw;
+      if (typeof gtag === 'function') {
+        gtag('event', 'convert', {
+          raw_input: raw.slice(0, 100),
+          parse_mode: mode,
+          source_unit: sourceUnit,
+          shown_unit: shownUnit,
+          width_shown: wOut,
+          depth_shown: dOut,
+          height_shown: hOut
+        });
+      }
+    }, 1200);
+  }
+
   function render(){
     autoGrow();
     var raw = normalizeQuotes(dimsInput.value.trim());
@@ -640,6 +666,8 @@
     fullString.dataset.copy = wOut + ' W x ' + dOut + ' D x ' + hOut + ' H';
 
     sizeCube(wCm, dCm, hCm, false);
+
+    scheduleTrack(raw, parsed.mode, inputUnit, state.unit, wOut, dOut, hOut);
   }
 
   function updateDetectHint(parsed){
